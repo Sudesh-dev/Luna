@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "checkJs": false, "allowJs": true, "baseUrl": "." },
+  "exclude": ["node_modules"]
+}

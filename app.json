@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "LUNA",
+    "slug": "luna-music",
+    "scheme": "luna",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "icon": "./assets/art/moon-lake.png",
+    "splash": { "image": "./assets/art/moon-lake.png", "resizeMode": "cover", "backgroundColor": "#09070D" },
+    "ios": { "supportsTablet": true, "bundleIdentifier": "app.luna.music" },
+    "android": { "package": "app.luna.music", "adaptiveIcon": { "foregroundImage": "./assets/art/moon-lake.png", "backgroundColor": "#09070D" } },
+    "web": { "bundler": "metro", "name": "LUNA" },
+    "plugins": [["expo-router", { "headers": { "Cross-Origin-Embedder-Policy": "credentialless", "Cross-Origin-Opener-Policy": "same-origin" } }], ["expo-audio", { "enableBackgroundPlayback": true }]],
+    "experiments": { "typedRoutes": false }
+  }
+}

@@ -51,4 +51,3 @@ The artwork was generated with the built-in image generation tool for this proje
 1. Cinematic midnight lake, luminous crescent moon, distant mountains, cherry blossom branches, lavender and pink moonlight, no text.
 2. Night landscape with a bridge, distant lit city, crescent moon, lavender haze, no text.
 3. Reflective lake with a torii gate, large pink moon, violet mountains and blossoms, no text.
-
