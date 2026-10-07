@@ -15,14 +15,17 @@ const moods = [
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { tracks, playlists, history, importAudio, ready, error } = useLuna();
+  const { tracks, playlists, playlistTracks, liked, history, error } = useLuna();
+  const favorites = liked.slice(0, 4).map(id => tracks.find(track => track.id === id)).filter(Boolean);
   const recent = [...new Set(history.map(item => item.track_id))].slice(0, 4).map(id => tracks.find(track => track.id === id)).filter(Boolean);
   return <Screen><View style={styles.header}>
     <View><Text style={ui.eyebrow}>{greeting()}</Text><Text style={styles.logo}>L U N A <Text style={styles.moon}>☾</Text></Text><Text style={styles.tagline}>MUSIC UNDER YOUR MOON</Text></View>
     <IconButton name="settings-outline" onPress={() => router.push('/settings')} color={colors.lavender} />
   </View>
-  <Pressable style={styles.search} onPress={() => router.push('/search')}><Ionicons name="search-outline" color={colors.muted} size={20} /><Text style={styles.searchText}>Search your music...</Text></Pressable>
-  <SectionTitle title="Made for your mood" />
+  <Pressable style={styles.search} onPress={() => router.push('/search')}><Ionicons name="search-outline" color={colors.muted} size={20} /><Text style={styles.searchText}>Search songs, artists, albums...</Text></Pressable>
+  <SectionTitle title="Made For You" />
+  {favorites.length ? favorites.map(track => <TrackRow key={track.id} track={track} tracks={favorites} />) : <Text style={ui.body}>Like a song and your favorites will find a home here.</Text>}
+  <SectionTitle title="Discover by mood" />
   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }} style={{ marginHorizontal: -22, paddingHorizontal: 22 }}>
     {moods.map(item => <Pressable key={item.title} style={styles.moodCard} onPress={() => router.push({ pathname: '/search', params: { q: item.query } })}>
       <Image source={artFor(item.art)} style={styles.moodImage} resizeMode="cover" />
@@ -31,10 +34,10 @@ export default function HomeScreen() {
   </ScrollView>
   <SectionTitle title="Recently played" action={recent.length ? 'See all' : undefined} onPress={() => router.push('/library')} />
   {recent.length ? recent.map(track => <TrackRow key={track.id} track={track} tracks={recent} />)
-    : <EmptyState icon="time-outline" title="Your story starts here" detail="Import music from your device, press play, and your recent tracks will appear here." action="Import audio" onPress={importAudio} />}
+    : <EmptyState icon="time-outline" title="Your story starts here" detail="Search Audius, press play, and your recent tracks will appear here." action="Search music" onPress={() => router.push('/search')} />}
   <SectionTitle title="Your playlists" action="View library" onPress={() => router.push('/library')} />
   {playlists.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }} style={{ marginHorizontal: -22, paddingHorizontal: 22 }}>
-    {playlists.slice(0, 6).map(list => <Pressable key={list.id} style={styles.playlistCard} onPress={() => router.push(`/playlist/${list.id}`)}><Cover index={list.artwork} size={138} radius={13} /><Text style={styles.playlistTitle} numberOfLines={1}>{list.name}</Text><Text style={styles.playlistCount}>{tracks.length ? 'Your collection' : 'New playlist'}</Text></Pressable>)}
+    {playlists.slice(0, 6).map(list => <Pressable key={list.id} style={styles.playlistCard} onPress={() => router.push(`/playlist/${list.id}`)}><Cover index={list.artwork} size={138} radius={13} /><Text style={styles.playlistTitle} numberOfLines={1}>{list.name}</Text><Text style={styles.playlistCount}>{playlistTracks.filter(row => row.playlist_id === list.id).length} songs</Text></Pressable>)}
   </ScrollView> : <Pressable style={styles.newPlaylist} onPress={() => router.push('/library')}><Ionicons name="add-circle-outline" color={colors.lavender} size={25} /><Text style={styles.newTitle}>Create your first playlist</Text><Ionicons name="chevron-forward" color={colors.muted} size={18} /></Pressable>}
   {error ? <Text style={styles.error}>{error}</Text> : null}
   </Screen>;

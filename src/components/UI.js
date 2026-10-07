@@ -3,43 +3,61 @@ import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { artFor, colors } from '../lib/theme';
+import { formatTime } from '../lib/format';
 import { useLuna } from '../context/LunaContext';
 
-export function Screen({ children, scroll = true, style }) {
+const labelForIcon = name => String(name || 'button').replace(/-outline$/, '').replace(/-/g, ' ');
+
+export function Screen({ children, scroll = true, style, safeTop = true }) {
+  const insets = useSafeAreaInsets();
+  const safeStyle = { paddingTop: safeTop ? Math.max(insets.top + 8, 22) : 0, paddingBottom: 160 + insets.bottom };
   return <LinearGradient colors={['#20132D', '#0F0A17', colors.background]} locations={[0, 0.32, 0.72]} style={styles.screen}>
-    {scroll ? <ScrollView contentContainerStyle={[styles.content, style]} showsVerticalScrollIndicator={false}>{children}</ScrollView>
-      : <View style={[styles.content, { flex: 1 }, style]}>{children}</View>}
+    {scroll ? <ScrollView contentContainerStyle={[styles.content, safeStyle, style]} showsVerticalScrollIndicator={false}>{children}</ScrollView>
+      : <View style={[styles.content, safeStyle, { flex: 1 }, style]}>{children}</View>}
   </LinearGradient>;
 }
 
-export function IconButton({ name, onPress, color = colors.white, size = 22, style }) {
-  return <Pressable onPress={onPress} hitSlop={10} style={[styles.iconButton, style]}><Ionicons name={name} size={size} color={color} /></Pressable>;
+export function IconButton({ name, onPress, color = colors.white, size = 22, style, accessibilityLabel }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel || labelForIcon(name)} onPress={event => { event.stopPropagation(); onPress?.(event); }} hitSlop={6} style={[styles.iconButton, style]}>
+    <Ionicons name={name} size={size} color={color} />
+  </Pressable>;
 }
 
 export function SectionTitle({ title, action, onPress }) {
-  return <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{title}</Text>{action ? <Pressable onPress={onPress}><Text style={styles.sectionAction}>{action}</Text></Pressable> : null}</View>;
+  return <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{title}</Text>{action ? <Pressable accessibilityRole="button" accessibilityLabel={`${action}, ${title}`} onPress={onPress}><Text style={styles.sectionAction}>{action}</Text></Pressable> : null}</View>;
 }
 
-export function Cover({ index = 0, size = 56, radius = 12, style }) {
-  return <Image source={artFor(index)} style={[{ width: size, height: size, borderRadius: radius, backgroundColor: colors.raised }, style]} />;
+export function Cover({ index = 0, uri, size = 56, radius = 12, style }) {
+  const [failed, setFailed] = useState(false);
+  React.useEffect(() => setFailed(false), [uri]);
+  const source = uri && !failed ? { uri } : artFor(index);
+  return <Image source={source} onError={() => setFailed(true)} style={[{ width: size, height: size, borderRadius: radius, backgroundColor: colors.raised }, style]} />;
 }
 
 export function TrackRow({ track, tracks, trailing = true, onPress, onMore }) {
   const { playTrack, liked, toggleLike } = useLuna();
-  return <Pressable style={styles.trackRow} onPress={onPress || (() => playTrack(track, tracks))}>
-    <Cover index={track.artwork} size={54} radius={10} />
+  const provider = track.source === 'audius' ? 'Audius'
+    : track.source === 'soundcloud' ? 'SoundCloud'
+      : track.source === 'spotify' ? 'Spotify'
+        : track.source === 'local' ? 'On device' : null;
+  const playbackType = track.playback_type === 'preview' ? 'Preview' : null;
+  const availability = track.playable === 0 || track.source === 'unresolved' ? 'Unavailable' : null;
+  const details = [track.artist, provider, playbackType, track.duration ? formatTime(track.duration) : null, availability].filter(Boolean).join(' · ');
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Play ${track.title} by ${track.artist}`} style={styles.trackRow} onPress={onPress || (() => playTrack(track, tracks))}>
+    <Cover index={track.artwork} uri={track.artwork_url} size={54} radius={10} />
     <View style={styles.trackText}><Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
-      <Text style={styles.trackArtist} numberOfLines={1}>{track.artist}{track.source === 'unresolved' ? ' · Needs audio' : ''}</Text></View>
-    {trailing && <IconButton name={liked.includes(track.id) ? 'heart' : 'heart-outline'} color={liked.includes(track.id) ? colors.rose : colors.muted} size={20} onPress={() => toggleLike(track.id)} />}
-    {onMore && <IconButton name="ellipsis-vertical" color={colors.muted} size={18} onPress={onMore} />}
+      <Text style={styles.trackArtist} numberOfLines={1}>{details}</Text></View>
+    {trailing && <IconButton accessibilityLabel={liked.includes(track.id) ? `Unlike ${track.title}` : `Like ${track.title}`} name={liked.includes(track.id) ? 'heart' : 'heart-outline'} color={liked.includes(track.id) ? colors.rose : colors.muted} size={20} onPress={() => toggleLike(track)} />}
+    {onMore && <IconButton accessibilityLabel={`More actions for ${track.title}`} name="ellipsis-vertical" color={colors.muted} size={18} onPress={onMore} />}
   </Pressable>;
 }
 
 export function EmptyState({ icon = 'musical-notes-outline', title, detail, action, onPress }) {
   return <View style={styles.empty}><View style={styles.emptyIcon}><Ionicons name={icon} size={27} color={colors.lavender} /></View>
     <Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyDetail}>{detail}</Text>
-    {action && <Pressable style={styles.primaryButton} onPress={onPress}><Text style={styles.primaryText}>{action}</Text></Pressable>}</View>;
+    {action && <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={onPress}><Text style={styles.primaryText}>{action}</Text></Pressable>}</View>;
 }
 
 export function NameModal({ visible, title, value = '', onCancel, onSave }) {
@@ -55,13 +73,24 @@ export function NameModal({ visible, title, value = '', onCancel, onSave }) {
 }
 
 export function PlaylistPicker({ track, onClose }) {
-  const { playlists, addToPlaylist } = useLuna();
+  const { playlists, addToPlaylist, addToQueue, createPlaylist } = useLuna();
+  const [newName, setNewName] = useState('');
+  const [adding, setAdding] = useState(false);
+  const add = async playlistId => {
+    if (adding) return;
+    setAdding(true);
+    try { await addToPlaylist(playlistId, track); onClose(); }
+    catch (cause) { Alert.alert('Could not add song', cause.message); }
+    finally { setAdding(false); }
+  };
   return <Modal visible={!!track} transparent animationType="slide" onRequestClose={onClose}>
     <View style={styles.modalScrim}><View style={styles.pickerCard}>
       <View style={styles.pickerHeader}><Text style={styles.modalTitle}>Add to playlist</Text><IconButton name="close" onPress={onClose} /></View>
-      {playlists.length ? playlists.map(list => <Pressable key={list.id} style={styles.pickerRow} onPress={async () => { await addToPlaylist(list.id, track.id); onClose(); }}>
+      <Pressable style={styles.pickerRow} onPress={() => { addToQueue(track); onClose(); }}><Ionicons name="list-outline" color={colors.lavender} size={23} /><Text style={styles.trackTitle}>Add to queue</Text></Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 12 }}><TextInput accessibilityLabel="New playlist name" value={newName} onChangeText={setNewName} placeholder="New playlist name" placeholderTextColor={colors.muted} maxLength={80} style={[styles.input, { flex: 1 }]} /><Pressable disabled={adding || !newName.trim()} accessibilityRole="button" onPress={async () => { if (adding) return; setAdding(true); try { const id = await createPlaylist(newName); if (id) { await addToPlaylist(id, track); setNewName(''); onClose(); } } catch (cause) { Alert.alert('Could not create playlist', cause.message); } finally { setAdding(false); } }}><Text style={styles.save}>Create</Text></Pressable></View>
+      <ScrollView>{playlists.length ? playlists.map(list => <Pressable disabled={adding} key={list.id} style={styles.pickerRow} onPress={() => add(list.id)}>
         <Cover index={list.artwork} size={44} /><Text style={styles.trackTitle}>{list.name}</Text><Ionicons name="add" color={colors.lavender} size={22} /></Pressable>)
-        : <Text style={styles.emptyDetail}>Create a playlist from your Library first.</Text>}
+        : <Text style={styles.emptyDetail}>Name your first playlist above.</Text>}</ScrollView>
     </View></View>
   </Modal>;
 }
@@ -75,8 +104,8 @@ export const ui = StyleSheet.create({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: 22, paddingTop: 22, paddingBottom: 160 },
-  iconButton: { alignItems: 'center', justifyContent: 'center', minWidth: 34, minHeight: 34 },
+  content: { paddingHorizontal: 22, paddingTop: 22, paddingBottom: 160, width: '100%', maxWidth: 520, alignSelf: 'center' },
+  iconButton: { alignItems: 'center', justifyContent: 'center', minWidth: 44, minHeight: 44 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 30, marginBottom: 14 },
   sectionTitle: { color: colors.white, fontWeight: '700', fontSize: 18 },
   sectionAction: { color: colors.muted, fontSize: 12 },

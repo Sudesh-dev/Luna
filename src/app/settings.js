@@ -12,19 +12,19 @@ function SettingRow({ icon, title, subtitle, onPress }) {
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { clearHistory, exportLibrary, importLibrary, importPlaylist } = useLuna();
+  const { clearHistory, exportLibrary, importLibrary } = useLuna();
   const run = async action => { try { await action(); } catch (cause) { Alert.alert('Could not complete action', cause.message || 'Please try again.'); } };
   return <Screen><View style={styles.header}><IconButton name="arrow-back" onPress={() => router.back()} /><Text style={ui.heading}>Settings</Text><View style={{ width: 34 }} /></View>
     <SectionTitle title="Appearance" /><View style={styles.group}><SettingRow icon="moon-outline" title="Moonlight theme" subtitle="LUNA uses its signature dark appearance." /></View>
     <SectionTitle title="Library" /><View style={styles.group}>
       <SettingRow icon="musical-notes-outline" title="Import audio" subtitle="Keep playable copies on this device" onPress={() => router.push('/library')} />
-      <SettingRow icon="document-text-outline" title="Import LUNA playlist" subtitle="Match songs already in your library" onPress={() => run(async () => { const result = await importPlaylist(); if (result) { Alert.alert('Playlist imported', `${result.matched} of ${result.total} songs matched your device library. The others need audio files.`); router.push(`/playlist/${result.id}`); } })} />
-      <SettingRow icon="download-outline" title="Import library backup" subtitle="Restore playlists, likes, and song metadata" onPress={() => run(async () => { const imported = await importLibrary(); if (imported) Alert.alert('Library imported', 'Music files are not included in the backup. Unmatched songs need local audio.'); })} />
+      <SettingRow icon="document-text-outline" title="Import playlist" subtitle="Match Spotify, SoundCloud, or LUNA metadata to Audius" onPress={() => router.push('/import')} />
+      <SettingRow icon="download-outline" title="Import library backup" subtitle="Restore playlists, likes, and song metadata" onPress={() => run(async () => { const imported = await importLibrary(); if (imported) Alert.alert('Library imported', 'Local audio files are not included. Provider songs remain playable when their source is connected.'); })} />
       <SettingRow icon="share-outline" title="Export library backup" subtitle="Share playlists, likes, and song metadata" onPress={() => run(exportLibrary)} />
       <SettingRow icon="time-outline" title="Clear recently played" onPress={() => Alert.alert('Clear history?', 'Your recently played list will be removed from this device.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => run(clearHistory) }])} />
     </View>
     <SectionTitle title="About" /><View style={styles.group}><SettingRow icon="sparkles-outline" title="LUNA" subtitle="Music under your moon · version 1.0" /><SettingRow icon="cloud-offline-outline" title="Private by design" subtitle="Your library and listening history stay on this device." /></View>
-    <Text style={styles.note}>SoundCloud playback requires approved API credentials and a secure token service. SoundCloud audio cannot be saved for offline listening. Your own imported audio works offline.</Text>
+    <Text style={styles.note}>Music streams through Audius. Spotify and SoundCloud are playlist import sources. Your playlists, likes, history, and imported audio live on this device. Fresh search and streaming require internet.</Text>
   </Screen>;
 }
 

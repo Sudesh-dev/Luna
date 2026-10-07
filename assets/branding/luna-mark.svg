@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="moon" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#C9A7FF"/><stop offset="1" stop-color="#F3BEDF"/></linearGradient>
+    <mask id="crescent"><rect width="1024" height="1024" fill="black"/><circle cx="475" cy="518" r="210" fill="white"/><circle cx="565" cy="452" r="190" fill="black"/></mask>
+  </defs>
+  <circle cx="475" cy="518" r="210" fill="url(#moon)" mask="url(#crescent)"/>
+  <g fill="#F3BEDF"><path d="M688 319 712 343 688 367 664 343Z"/><path d="M350 282 362 294 350 306 338 294Z"/><path d="M736 573 746 583 736 593 726 583Z"/></g>
+</svg>

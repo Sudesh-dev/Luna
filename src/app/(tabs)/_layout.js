@@ -2,16 +2,18 @@ import React from 'react';
 import { View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MiniPlayer from '../../components/MiniPlayer';
 import { colors } from '../../lib/theme';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
   return <View style={{ flex: 1, backgroundColor: colors.background }}>
     <Tabs screenOptions={({ route }) => ({
       headerShown: false,
       tabBarActiveTintColor: colors.lavender,
       tabBarInactiveTintColor: colors.muted,
-      tabBarStyle: { backgroundColor: '#0D0A13', borderTopColor: '#2A2234', height: 74, paddingTop: 7, paddingBottom: 8 },
+      tabBarStyle: { backgroundColor: '#0D0A13', borderTopColor: '#2A2234', height: 74 + insets.bottom, paddingTop: 7, paddingBottom: 8 + insets.bottom },
       tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       tabBarIcon: ({ color, focused }) => <Ionicons name={({ index: focused ? 'home' : 'home-outline', search: focused ? 'search' : 'search-outline', library: focused ? 'albums' : 'albums-outline' })[route.name]} size={22} color={color} />,
     })}>
