@@ -7,6 +7,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { clearPlayHistory, getDatabase, initializeDatabase, readLibrary, recordPlay, saveProviderTrack, saveMatchedPlaylist, readImportReview, saveImportReview } from '../lib/database';
 import { audiusStreamUrl } from '../services/audius';
+import { resolveProviderStream } from '../services/multiSource';
+import { useMusicStore } from '../store/useMusicStore';
 
 const LunaContext = createContext(null);
 const MAX_AUDIO_IMPORT_BYTES = 50 * 1024 * 1024;
@@ -106,6 +108,9 @@ const providerPlayback = (source, sourceId) => {
   if (source === 'audius') {
     return { uri: audiusStreamUrl(sourceId), playable: 1, unavailable_reason: null };
   }
+  if (source === 'archive' || source === 'jamendo' || source === 'piped') {
+    return { uri: '', playable: 1, unavailable_reason: null };
+  }
   if (source === 'soundcloud') {
     return {
       uri: '', playable: 0,
@@ -115,7 +120,7 @@ const providerPlayback = (source, sourceId) => {
   return { uri: '', playable: 0, unavailable_reason: 'Reconnect this music provider to play the imported track.' };
 };
 const restoreProviderPlayback = track => {
-  if (track?.source && !['audius', 'local', 'unresolved'].includes(track.source)) return { ...track, ...providerPlayback(track.source, track.source_id) };
+  if (track?.source && !['audius', 'local', 'unresolved', 'piped', 'jamendo', 'archive'].includes(track.source)) return { ...track, ...providerPlayback(track.source, track.source_id) };
   if (track?.source === 'audius' && track.playable === 0) return track;
   if (!track?.source_id || track.source === 'local' || track.source === 'unresolved' || (track.uri && track.playable !== 0)) return track;
   return { ...track, ...providerPlayback(track.source, track.source_id) };
@@ -178,12 +183,13 @@ export function LunaProvider({ children }) {
   const [library, setLibrary] = useState({ tracks: [], playlists: [], playlistTracks: [], liked: [], history: [] });
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
-  const [current, setCurrent] = useState(null);
-  const [queue, setQueue] = useState([]);
-  const [status, setStatus] = useState({ playing: false, currentTime: 0, duration: 0 });
-  const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState(false);
-  const [playbackError, setPlaybackError] = useState('');
+  const current = useMusicStore(state => state.current);
+  const queue = useMusicStore(state => state.queue);
+  const status = useMusicStore(state => state.status);
+  const shuffle = useMusicStore(state => state.shuffle);
+  const repeat = useMusicStore(state => state.repeat);
+  const playbackError = useMusicStore(state => state.playbackError);
+  const { setCurrent, setQueue, setStatus, setShuffle, setRepeat, setPlaybackError, bindPlayer } = useMusicStore.getState();
   const currentRef = useRef(null);
   const queueRef = useRef([]);
   const shuffleRef = useRef(false);
@@ -212,7 +218,7 @@ export function LunaProvider({ children }) {
       if (!live) return;
       setStatus(nextStatus);
       if (nextStatus.error) {
-        setPlaybackError('This track could not be played. Check your connection or choose another Audius track.');
+        setPlaybackError('This track could not be played. Check your connection or choose another source.');
         pendingHistoryRef.current = null;
       }
       if (nextStatus.playing && pendingHistoryRef.current) {
@@ -227,7 +233,18 @@ export function LunaProvider({ children }) {
 
   const playTrack = useCallback(async (track, tracks = []) => {
     const requestId = ++playbackRequestRef.current;
-    const resolvedTrack = restoreProviderPlayback(track);
+    let resolvedTrack = restoreProviderPlayback(track);
+    if (['piped', 'jamendo', 'archive'].includes(resolvedTrack?.source) && resolvedTrack?.source_id) {
+      try {
+        const uri = await resolveProviderStream(resolvedTrack.source, resolvedTrack.source_id, resolvedTrack.uri);
+        if (requestId !== playbackRequestRef.current) return false;
+        resolvedTrack = { ...resolvedTrack, uri, playable: 1, unavailable_reason: null };
+      } catch (cause) {
+        setPlaybackError(cause.message || 'This provider stream is unavailable.');
+        Alert.alert('Track unavailable', cause.message || 'This provider stream is unavailable.');
+        return false;
+      }
+    }
     if (!resolvedTrack?.uri || resolvedTrack.playable === 0 || resolvedTrack.source === 'unresolved') {
       const message = resolvedTrack?.unavailable_reason || (resolvedTrack?.source === 'unresolved'
         ? 'Add a local audio file to play this song on this device.'
@@ -249,7 +266,7 @@ export function LunaProvider({ children }) {
       setStatus({ playing: false, currentTime: 0, duration: storedTrack.duration || 0, isLoaded: false, isBuffering: true });
       player.replace(storedTrack.uri);
       pendingHistoryRef.current = storedTrack.id;
-      if (Platform.OS === 'android') player.setActiveForLockScreen(true, { title: storedTrack.title, artist: storedTrack.artist, albumTitle: storedTrack.album_title || 'LUNA' });
+      if (Platform.OS !== 'web') player.setActiveForLockScreen(true, { title: storedTrack.title, artist: storedTrack.artist, albumTitle: storedTrack.album_title || 'LUNA', artworkUrl: storedTrack.artwork_url || undefined });
       player.play();
       await refresh();
       return true;
@@ -260,7 +277,7 @@ export function LunaProvider({ children }) {
   }, [player, refresh]);
 
   const next = useCallback(async (direction = 1) => {
-    const list = queueRef.current.filter(track => ['local', 'audius'].includes(track.source) && track.playable !== 0 && track.uri);
+    const list = queueRef.current.filter(track => ['local', 'audius', 'piped', 'jamendo', 'archive'].includes(track.source) && track.playable !== 0 && (track.uri || track.source_id));
     if (!list.length) return;
     const at = list.findIndex(track => track.id === currentRef.current?.id);
     let index = at + direction;
@@ -285,8 +302,8 @@ export function LunaProvider({ children }) {
   const toggleShuffle = () => { shuffleRef.current = !shuffleRef.current; setShuffle(shuffleRef.current); };
   const toggleRepeat = () => { repeatRef.current = !repeatRef.current; setRepeat(repeatRef.current); };
   const startPlaylist = async (tracks, shuffled = false) => {
-    const playable = tracks.filter(track => (track.source === 'local' || track.source === 'audius') && track.playable !== 0 && track.uri);
-    if (!playable.length) { Alert.alert('No playable songs', 'Search Audius or review imported matches to add playable songs.'); return; }
+    const playable = tracks.filter(track => ['local', 'audius', 'piped', 'jamendo', 'archive'].includes(track.source) && track.playable !== 0 && (track.uri || track.source_id));
+    if (!playable.length) { Alert.alert('No playable songs', 'Search a music source or review imported matches to add playable songs.'); return; }
     shuffleRef.current = shuffled; setShuffle(shuffled);
     const first = shuffled ? playable[Math.floor(Math.random() * playable.length)] : playable[0];
     await playTrack(first, playable);
@@ -529,6 +546,11 @@ export function LunaProvider({ children }) {
 
   const saveImportedPlaylist = async input => { const result = await saveMatchedPlaylist(input); await refresh(); return result; };
   const saveReviewedImport = async (id, entries) => { await saveImportReview(id, entries); await refresh(); return id; };
+
+  useEffect(() => {
+    bindPlayer({ playTrack, togglePlay, next, seek });
+    return () => bindPlayer(null);
+  }, [bindPlayer, playTrack, next, status.playing, playbackError]);
 
   const value = { ...library, ready, error, current, queue, status, shuffle, repeat, refresh, playbackError,
     saveImportedPlaylist, readImportReview, saveReviewedImport,

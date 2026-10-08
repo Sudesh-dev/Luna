@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LunaProvider, useLuna } from '../context/LunaContext';
 import { colors } from '../lib/theme';
+import { useMusicStore } from '../store/useMusicStore';
 
 function AppNavigator() {
   const { ready } = useLuna();
@@ -21,6 +22,7 @@ function AppNavigator() {
 }
 
 export default function RootLayout() {
+  React.useEffect(() => { useMusicStore.getState().initializeAuth().catch(cause => console.warn('Cloud sign-in setup failed', cause)); }, []);
   return <SafeAreaProvider><StatusBar style="light" backgroundColor={colors.background} /><LunaProvider><AppNavigator /></LunaProvider></SafeAreaProvider>;
 }
 

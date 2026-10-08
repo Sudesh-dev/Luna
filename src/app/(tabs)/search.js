@@ -5,12 +5,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Cover, EmptyState, PlaylistPicker, Screen, SectionTitle, TrackRow, ui } from '../../components/UI';
 import { useLuna } from '../../context/LunaContext';
 import { colors } from '../../lib/theme';
-import { cachedAudiusSearch, searchAudiusTracks } from '../../services/audius';
+import { useMusicStore } from '../../store/useMusicStore';
 
 const DEBOUNCE_MS = 350;
 const PROVIDER_OPTIONS = [
-  { id: 'all', label: 'Audius + library', icon: 'sparkles-outline', detail: 'Audius and saved songs' },
+  { id: 'all', label: 'All sources', icon: 'sparkles-outline', detail: 'Audius, Piped, Jamendo, Archive, and library' },
   { id: 'audius', label: 'Audius', icon: 'musical-notes-outline', detail: 'Ready' },
+  { id: 'piped', label: 'Piped', icon: 'videocam-outline', detail: 'Public instance; may be unavailable' },
+  { id: 'jamendo', label: 'Jamendo', icon: 'radio-outline', detail: 'Independent music' },
+  { id: 'archive', label: 'Internet Archive', icon: 'archive-outline', detail: 'Open audio collections' },
   { id: 'local', label: 'On device', icon: 'phone-portrait-outline', detail: 'Offline library' },
 ];
 
@@ -23,9 +26,11 @@ export default function SearchScreen() {
   const { tracks, playlists, importAudio } = useLuna();
   const [query, setQuery] = useState(typeof q === 'string' ? q : '');
   const [filter, setFilter] = useState('Songs');
-  const [selectedProvider, setSelectedProvider] = useState('audius');
+  const [selectedProvider, setSelectedProvider] = useState('all');
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
-  const [remoteTracks, setRemoteTracks] = useState([]);
+  const remoteTracks = useMusicStore(state => state.searchResults);
+  const searchWarnings = useMusicStore(state => state.searchWarnings);
+  const searchCatalog = useMusicStore(state => state.searchCatalog);
   const [searchState, setSearchState] = useState('idle');
   const [searchError, setSearchError] = useState('');
   const [searchWarning, setSearchWarning] = useState('');
@@ -37,56 +42,36 @@ export default function SearchScreen() {
 
   useEffect(() => {
     if (search.length < 2) {
-      setRemoteTracks([]);
+      useMusicStore.setState({ searchResults: [], searchWarnings: [] });
       setSearchState('idle');
       setSearchError('');
       setSearchWarning('');
       return undefined;
     }
 
-    let controller;
-    const cached = selectedProvider !== 'local' ? cachedAudiusSearch(query) : null;
-    setRemoteTracks(cached || []);
-    setSearchState(cached ? 'success' : 'debouncing');
+    const controller = new AbortController();
+    setSearchState('debouncing');
     setSearchError('');
     setSearchWarning('');
     const timer = setTimeout(async () => {
-      controller = new AbortController();
       setSearchState('loading');
       try {
-        const providers = [];
-        if (selectedProvider === 'all' || selectedProvider === 'audius') {
-          providers.push({ name: 'Audius', request: searchAudiusTracks(query, { signal: controller.signal }) });
-        }
-        if (!providers.length) {
-          setRemoteTracks([]);
-          setSearchState('success');
-          return;
-        }
-        const settled = await Promise.allSettled(providers.map(provider => provider.request));
+        await searchCatalog(query, selectedProvider, controller.signal);
         if (controller.signal.aborted) return;
-        const results = settled.flatMap(result => result.status === 'fulfilled' ? result.value : []);
-        const unavailableProviders = settled.map((result, index) => result.status === 'rejected' ? providers[index].name : null).filter(Boolean);
-        if (!results.length && unavailableProviders.length === providers.length) {
-          const firstError = settled.find(result => result.status === 'rejected')?.reason;
-          throw firstError || new Error('Music search failed. Please try again.');
-        }
-        setRemoteTracks(results);
-        setSearchWarning(unavailableProviders.length ? `${unavailableProviders.join(' and ')} could not be reached. Showing results from available providers.` : '');
+        setSearchWarning(useMusicStore.getState().searchWarnings.join(' · '));
         setSearchState('success');
       } catch (cause) {
         if (cause?.name === 'AbortError') return;
-        setRemoteTracks([]);
         setSearchError(cause?.message || 'Music search failed. Please try again.');
         setSearchState('error');
       }
-    }, cached ? 0 : DEBOUNCE_MS);
+    }, DEBOUNCE_MS);
 
     return () => {
       clearTimeout(timer);
-      controller?.abort();
+      controller.abort();
     };
-  }, [query, retryCount, search, selectedProvider]);
+  }, [query, retryCount, search, selectedProvider, searchCatalog]);
 
   const hydratedRemoteTracks = useMemo(() => remoteTracks.map(remoteTrack => {
     const storedTrack = tracks.find(track => sameSourceTrack(track, remoteTrack));
@@ -130,7 +115,7 @@ export default function SearchScreen() {
     <View style={styles.filters}>{['Songs', 'Artists', 'Albums', 'Playlists'].map(item => <Pressable key={item} style={[styles.chip, filter === item && styles.activeChip]} onPress={() => setFilter(item)}><Text style={[styles.chipText, filter === item && styles.activeText]}>{item}</Text></Pressable>)}</View>
     {searchState === 'loading' && <View style={styles.loading}><ActivityIndicator color={colors.lavender} /><Text style={styles.loadingText}>Searching {selectedProviderOption.label.toLocaleLowerCase()}...</Text></View>}
     {searchState === 'error' && <View style={styles.errorBanner}><Ionicons name="cloud-offline-outline" size={19} color="#FFB7C9" /><View style={{ flex: 1 }}><Text style={styles.errorTitle}>Internet search unavailable</Text><Text style={styles.errorText}>{searchError}</Text></View><Pressable accessibilityRole="button" onPress={() => setRetryCount(value => value + 1)}><Text style={styles.retry}>Retry</Text></Pressable></View>}
-    {!!searchWarning && <View style={styles.warningBanner}><Ionicons name="information-circle-outline" size={19} color={colors.lavender} /><Text style={styles.warningText}>{searchWarning}</Text></View>}
+    {!!(searchWarning || searchWarnings.length) && <View style={styles.warningBanner}><Ionicons name="information-circle-outline" size={19} color={colors.lavender} /><Text style={styles.warningText}>{searchWarning || searchWarnings.join(' · ')}</Text></View>}
     {filter === 'Songs' && (results.length ? <><SectionTitle title={search ? `${results.length} ${selectedProviderOption.label} results` : `${selectedProviderOption.label} songs`} />{results.map(track => <TrackRow key={`${track.source}-${track.id}`} track={track} tracks={results} onMore={() => setSelectedTrack(track)} />)}</>
       : <EmptyState icon="musical-notes-outline" title={searchState === 'success' ? `No ${selectedProviderOption.label} songs found` : 'Search real music'} detail={searchState === 'success' ? 'Try another song title, artist, genre, mood, or music source.' : 'Enter at least two characters, then choose which connected source to search.'} action={!search && selectedProvider === 'local' ? 'Import audio' : undefined} onPress={importAudio} />)}
     {filter === 'Artists' && (artistNames.length ? <><SectionTitle title="Artists" />{artistNames.map((artist, index) => <Pressable key={artist} style={styles.artistRow} onPress={() => { setFilter('Songs'); setQuery(artist); }}><Cover index={index} size={52} radius={26} /><Text style={styles.artistName}>{artist}</Text><Ionicons name="chevron-forward" size={19} color={colors.muted} /></Pressable>)}</>

@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { artFor, colors } from '../lib/theme';
 import { formatTime } from '../lib/format';
 import { useLuna } from '../context/LunaContext';
+import { useMusicStore } from '../store/useMusicStore';
+import { toCloudTrack } from '../types/music';
 
 const labelForIcon = name => String(name || 'button').replace(/-outline$/, '').replace(/-/g, ' ');
 
@@ -39,15 +41,18 @@ export function Cover({ index = 0, uri, size = 56, radius = 12, style }) {
 export function TrackRow({ track, tracks, trailing = true, onPress, onMore }) {
   const { playTrack, liked, toggleLike } = useLuna();
   const provider = track.source === 'audius' ? 'Audius'
+    : track.source === 'piped' ? 'Piped'
+      : track.source === 'jamendo' ? 'Jamendo'
+        : track.source === 'archive' ? 'Internet Archive'
     : track.source === 'soundcloud' ? 'SoundCloud'
       : track.source === 'spotify' ? 'Spotify'
         : track.source === 'local' ? 'On device' : null;
   const playbackType = track.playback_type === 'preview' ? 'Preview' : null;
   const availability = track.playable === 0 || track.source === 'unresolved' ? 'Unavailable' : null;
-  const details = [track.artist, provider, playbackType, track.duration ? formatTime(track.duration) : null, availability].filter(Boolean).join(' · ');
+  const details = [track.artist, playbackType, track.duration ? formatTime(track.duration) : null, availability].filter(Boolean).join(' · ');
   return <Pressable accessibilityRole="button" accessibilityLabel={`Play ${track.title} by ${track.artist}`} style={styles.trackRow} onPress={onPress || (() => playTrack(track, tracks))}>
     <Cover index={track.artwork} uri={track.artwork_url} size={54} radius={10} />
-    <View style={styles.trackText}><Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
+    <View style={styles.trackText}><View style={styles.trackTitleLine}><Text style={[styles.trackTitle, { flex: 1 }]} numberOfLines={1}>{track.title}</Text>{provider && <View style={styles.sourceBadge}><Text style={styles.sourceBadgeText}>{provider}</Text></View>}</View>
       <Text style={styles.trackArtist} numberOfLines={1}>{details}</Text></View>
     {trailing && <IconButton accessibilityLabel={liked.includes(track.id) ? `Unlike ${track.title}` : `Like ${track.title}`} name={liked.includes(track.id) ? 'heart' : 'heart-outline'} color={liked.includes(track.id) ? colors.rose : colors.muted} size={20} onPress={() => toggleLike(track)} />}
     {onMore && <IconButton accessibilityLabel={`More actions for ${track.title}`} name="ellipsis-vertical" color={colors.muted} size={18} onPress={onMore} />}
@@ -74,6 +79,8 @@ export function NameModal({ visible, title, value = '', onCancel, onSave }) {
 
 export function PlaylistPicker({ track, onClose }) {
   const { playlists, addToPlaylist, addToQueue, createPlaylist } = useLuna();
+  const cloudPlaylists = useMusicStore(state => state.cloudPlaylists);
+  const addCloudTrack = useMusicStore(state => state.addCloudTrack);
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState(false);
   const add = async playlistId => {
@@ -90,7 +97,8 @@ export function PlaylistPicker({ track, onClose }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 12 }}><TextInput accessibilityLabel="New playlist name" value={newName} onChangeText={setNewName} placeholder="New playlist name" placeholderTextColor={colors.muted} maxLength={80} style={[styles.input, { flex: 1 }]} /><Pressable disabled={adding || !newName.trim()} accessibilityRole="button" onPress={async () => { if (adding) return; setAdding(true); try { const id = await createPlaylist(newName); if (id) { await addToPlaylist(id, track); setNewName(''); onClose(); } } catch (cause) { Alert.alert('Could not create playlist', cause.message); } finally { setAdding(false); } }}><Text style={styles.save}>Create</Text></Pressable></View>
       <ScrollView>{playlists.length ? playlists.map(list => <Pressable disabled={adding} key={list.id} style={styles.pickerRow} onPress={() => add(list.id)}>
         <Cover index={list.artwork} size={44} /><Text style={styles.trackTitle}>{list.name}</Text><Ionicons name="add" color={colors.lavender} size={22} /></Pressable>)
-        : <Text style={styles.emptyDetail}>Name your first playlist above.</Text>}</ScrollView>
+        : <Text style={styles.emptyDetail}>Name a local playlist above, or choose a cloud playlist below.</Text>}</ScrollView>
+      {!!cloudPlaylists.length && <ScrollView style={{ maxHeight: 180 }}><Text style={[styles.emptyDetail, { textAlign: 'left', marginBottom: 4 }]}>CLOUD PLAYLISTS</Text>{cloudPlaylists.map(list => <Pressable disabled={adding || !toCloudTrack(track || {})} key={list.id} style={styles.pickerRow} onPress={async () => { const cloudTrack = toCloudTrack(track); if (!cloudTrack) return; setAdding(true); try { await addCloudTrack(list.id, cloudTrack); onClose(); } catch (cause) { Alert.alert('Cloud playlist', cause.message); } finally { setAdding(false); } }}><Ionicons name="cloud-outline" size={22} color={colors.lavender} /><Text style={styles.trackTitle}>{list.name}</Text><Ionicons name="add" color={colors.lavender} size={22} /></Pressable>)}</ScrollView>}
     </View></View>
   </Modal>;
 }
@@ -111,7 +119,10 @@ const styles = StyleSheet.create({
   sectionAction: { color: colors.muted, fontSize: 12 },
   trackRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 67 },
   trackText: { flex: 1, minWidth: 0 },
+  trackTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   trackTitle: { color: colors.white, fontSize: 14, fontWeight: '600' },
+  sourceBadge: { backgroundColor: '#342543', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3 },
+  sourceBadgeText: { color: colors.lavender, fontSize: 9, fontWeight: '700' },
   trackArtist: { color: colors.muted, fontSize: 12, marginTop: 3 },
   empty: { paddingHorizontal: 24, paddingVertical: 28, alignItems: 'center', borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.035)', borderWidth: 1, borderColor: colors.line },
   emptyIcon: { width: 54, height: 54, borderRadius: 27, backgroundColor: '#2A1D39', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },

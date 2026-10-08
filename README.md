@@ -1,6 +1,6 @@
 # LUNA
 
-LUNA is a login-free, mobile-first personal music player built on the existing Expo SDK 57 project, React Native, JavaScript, Expo Router, `expo-audio`, and `expo-sqlite`. Audius supplies real search and streaming. Spotify and SoundCloud supply import metadata where legitimately available. Playlists, likes, history, and import reviews live on the device. No backend, cloud database, subscription, or API key is required to run LUNA.
+LUNA is a mobile-first music player built on the existing Expo SDK 57 project. Its preserved local library uses SQLite and works without an account. Search now combines Audius, Jamendo, Internet Archive, and available Piped nodes. Optional Supabase Auth and PostgreSQL playlists sync your cloud playlists between devices. The new provider, cloud, and player state modules are TypeScript; existing screens and local-library code remain JavaScript where they already work.
 
 ## Run it
 
@@ -9,7 +9,11 @@ npm install
 npx expo start
 ```
 
-Open the QR code with Expo Go, or use `npm run android` for an Android emulator. The app starts with an empty local library. Search Audius to play real music, or use **Library → Import audio** for offline files. The app never seeds a fake catalog. Audius has its own catalog: searching for a Spotify artist does not guarantee that artist's original recordings are available.
+Open the QR code with Expo Go, or use `npm run android` for an Android emulator. The app starts with an empty local library. Search real providers to play music, or use **Library → Import audio** for offline files. The app never seeds a fake catalog. Provider availability and rights vary by track and region.
+
+To enable cloud playlists, create a free Supabase project, apply [001_cloud_playlists.sql](supabase/migrations/001_cloud_playlists.sql) in its SQL editor, and add `EXPO_PUBLIC_SUPABASE_URL` plus `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` to the ignored `.env` file. Use the publishable key only. Then open **Settings → Sign in or register**. Supabase may pause inactive free projects; see its current [pricing page](https://supabase.com/pricing). Cloud setup is optional for local playback.
+
+Jamendo requires your own free developer app client ID in `EXPO_PUBLIC_JAMENDO_CLIENT_ID`. The suggested `56d30c95` ID returned a suspended-application error in a live check, so LUNA does not ship it as a working default. Public Piped instances may fail or return expiring streams; `EXPO_PUBLIC_PIPED_API_BASE_URL` can select a different instance. See [.env.example](.env.example).
 
 On Windows PowerShell systems that block `npm.ps1`, use `npm.cmd` and `npx.cmd` instead.
 
@@ -17,24 +21,26 @@ On Windows PowerShell systems that block `npm.ps1`, use `npm.cmd` and `npx.cmd` 
 
 ```sh
 npm test
+npm run typecheck
 npm run check:android
 npm run check:web
 npm run check:provider
 ```
 
-Tests use Node's built-in test runner and SQLite (Node 22.13+; validated on Node 24). They cover conservative matching, JSON compatibility, URL validation, cancellation, API/cache behavior, migration from the existing database, import persistence, deduplication, rollback, and history limits. Bundle checks write to the ignored `.expo/build-check` directory and verify routing, compilation, assets, and platform-specific module resolution without publishing.
+Tests use Node's built-in test runner and SQLite (Node 22.13+; validated on Node 24). They cover conservative matching, JSON compatibility, URL validation, cancellation, provider normalization and partial failures, migration from the existing database, import persistence, deduplication, rollback, and history limits. Bundle checks write to the ignored `.expo/build-check` directory and verify routing, compilation, assets, and platform-specific module resolution without publishing.
 `check:provider` is an optional live Audius check: it searches real `lofi` metadata and checks a playable stream's response headers, then cancels the body without saving audio. Automated bundles and core tests pass; native playback, sharing, lock-screen controls, and live SoundCloud widget import still need device testing. Browser visual QA could not run because the UI-control runtime failed to start.
 
 ## What works now
 
 - Home, search, library, playlist detail, full player, mini-player, import, and settings screens.
-- Real internet music search and full-track streaming through the public Audius API.
+- Unified search across Audius, Jamendo, Internet Archive, and reachable Piped nodes, with source badges and isolated provider errors.
+- Optional account registration, persistent sign-in, and owner-only cloud playlists using Supabase Auth and row-level security.
 - Local audio import and offline playback of user-provided audio files.
 - SQLite storage for songs, playlists, liked songs, and listening history.
 - Playlist create, rename, delete, add, remove, reorder, share, and import.
 - Import review with EXACT, PROBABLE, and NOT_FOUND matches. Only single exact matches are selected automatically; alternate versions and ambiguous uploads require review.
 - Persistent unresolved imports, with retry and candidate listening/selection from playlist detail.
-- Queue, shuffle, repeat, seek, play/pause, previous/next, and Android lock-screen metadata.
+- Queue, shuffle, repeat, seek, play/pause, previous/next, and native lock-screen metadata. Zustand holds global player state while the existing Expo audio player remains mounted at the app root.
 - JSON library backup and restore. Backups contain metadata, playlists, and likes. They do **not** contain local audio files; supported provider references are restored when that source is connected.
 - A database-aware startup screen, safe-area layout support, and accessible shared controls.
 - Playback-only native audio permissions; LUNA does not request microphone access.
@@ -47,9 +53,11 @@ Schema version 3 preserves the existing `tracks`, `playlists`, `playlist_tracks`
 
 ## Music service integration
 
-LUNA uses the official Audius read-only API for login-free internet search and streaming. Public search does not require a user account or embedded secret. Results are normalized into LUNA's track model, saved to SQLite only when needed for likes, playlists, or history, and streamed from the official track endpoint. Remote audio is not downloaded or cached for offline playback.
+LUNA uses the official Audius read-only API for login-free search and streaming. Additional adapters query Jamendo's read-only API, Internet Archive search and item metadata, and public Piped API instances concurrently with `Promise.allSettled`. Results are normalized to `{ id, title, artist, url, artwork, source }` for the new sources, then adapted to LUNA's existing SQLite track identity. Provider failures show a warning while successful results remain usable. Piped stream URLs are refreshed at playback time because they can expire. Remote audio is not downloaded or cached for offline playback.
 
-Search debounces by 350 ms, cancels obsolete requests, and caches up to 60 searches for five minutes in memory. It supports loading, no results, network/API errors, unavailable tracks, and retry. The existing player supports queue editing, playlist shuffle, repeat, seeking, buffering feedback, playback errors, and Android lock-screen metadata. No remote audio is downloaded for offline listening.
+Cloud playlists live separately from local playlists under **Library → Cloud**. The app stores uniform metadata in the `tracks` JSONB array, and the Supabase migration enforces per-user row-level security. Select a song's menu in Search to add Jamendo, Archive, or Piped tracks to a cloud playlist. Audius and device files continue to use local playlists. Cloud writes need connectivity; the local library still opens offline.
+
+Search debounces by 350 ms, cancels obsolete requests, and caches provider results briefly in memory. It supports loading, no results, partial network/API errors, unavailable tracks, and retry. The existing player supports queue editing, playlist shuffle, repeat, seeking, buffering feedback, playback errors, and lock-screen metadata. No remote audio is downloaded for offline listening.
 
 ## Import playlists
 
@@ -81,6 +89,8 @@ The legacy `soundcloud-worker` folder is retained for reference and is unused by
 4. Paste a Spotify playlist link and verify the limitation/fallback. Try an embeddable public SoundCloud playlist; verify exposed metadata is matched to Audius. A private/unavailable link should produce a useful fallback.
 5. Disable internet and confirm Home, Library, likes, history, playlist editing, and saved review entries still work. Local audio should play; fresh search should show a recoverable error.
 6. On an Android development/release build, verify background audio, media controls, seeking, and lock-screen metadata. Bundle checks do not prove these device behaviors.
+7. Search the same query with **All sources** and each source filter. Confirm real result badges, playback, and a partial warning when a provider fails. Archive should work without a key; Jamendo needs your own active free client ID, and Piped needs a reachable public instance.
+8. After Supabase setup, register and confirm an account if email confirmation is enabled. Create a cloud playlist in **Library → Cloud**, add a Jamendo/Archive/Piped song from Search, restart the app, and verify persistent sign-in and playlist playback. Sign in as a different user and confirm the first user's playlist is not visible.
 
 ## Android APK
 

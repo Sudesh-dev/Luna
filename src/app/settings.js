@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { IconButton, Screen, SectionTitle, ui } from '../components/UI';
 import { useLuna } from '../context/LunaContext';
 import { colors } from '../lib/theme';
+import { useMusicStore } from '../store/useMusicStore';
 
 function SettingRow({ icon, title, subtitle, onPress }) {
   return <Pressable style={styles.row} onPress={onPress}><View style={styles.icon}><Ionicons name={icon} size={20} color={colors.lavender} /></View><View style={{ flex: 1 }}><Text style={styles.rowTitle}>{title}</Text>{subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}</View>{onPress && <Ionicons name="chevron-forward" size={18} color={colors.muted} />}</Pressable>;
@@ -13,6 +14,7 @@ function SettingRow({ icon, title, subtitle, onPress }) {
 export default function SettingsScreen() {
   const router = useRouter();
   const { clearHistory, exportLibrary, importLibrary } = useLuna();
+  const session = useMusicStore(state => state.session);
   const run = async action => { try { await action(); } catch (cause) { Alert.alert('Could not complete action', cause.message || 'Please try again.'); } };
   return <Screen><View style={styles.header}><IconButton name="arrow-back" onPress={() => router.back()} /><Text style={ui.heading}>Settings</Text><View style={{ width: 34 }} /></View>
     <SectionTitle title="Appearance" /><View style={styles.group}><SettingRow icon="moon-outline" title="Moonlight theme" subtitle="LUNA uses its signature dark appearance." /></View>
@@ -23,8 +25,9 @@ export default function SettingsScreen() {
       <SettingRow icon="share-outline" title="Export library backup" subtitle="Share playlists, likes, and song metadata" onPress={() => run(exportLibrary)} />
       <SettingRow icon="time-outline" title="Clear recently played" onPress={() => Alert.alert('Clear history?', 'Your recently played list will be removed from this device.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => run(clearHistory) }])} />
     </View>
-    <SectionTitle title="About" /><View style={styles.group}><SettingRow icon="sparkles-outline" title="LUNA" subtitle="Music under your moon · version 1.0" /><SettingRow icon="cloud-offline-outline" title="Private by design" subtitle="Your library and listening history stay on this device." /></View>
-    <Text style={styles.note}>Music streams through Audius. Spotify and SoundCloud are playlist import sources. Your playlists, likes, history, and imported audio live on this device. Fresh search and streaming require internet.</Text>
+    <SectionTitle title="Cloud" /><View style={styles.group}><SettingRow icon="person-circle-outline" title={session ? 'Account and sign out' : 'Sign in or register'} subtitle={session?.user?.email || 'Optional cloud playlists'} onPress={() => router.push('/account')} /></View>
+    <SectionTitle title="About" /><View style={styles.group}><SettingRow icon="sparkles-outline" title="LUNA" subtitle="Music under your moon · version 1.0" /><SettingRow icon="cloud-offline-outline" title="Local library" subtitle="Likes, history, and local playlists stay on this device." /></View>
+    <Text style={styles.note}>Search streams from Audius, Jamendo, Internet Archive, and available Piped nodes. Cloud playlists require your Supabase project and sign-in. Spotify and SoundCloud remain playlist import sources. Provider availability varies.</Text>
   </Screen>;
 }
 
